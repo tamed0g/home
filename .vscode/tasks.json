@@ -1,0 +1,56 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Install Dependencies",
+            "type": "shell",
+            "command": "${workspaceFolder}/venv/Scripts/python.exe",
+            "args": ["-m", "pip", "install", "-r", "requirements.txt"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Smart Home",
+            "type": "shell",
+            "command": "${workspaceFolder}/venv/Scripts/python.exe",
+            "args": ["src/main.py"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Tests",
+            "type": "shell",
+            "command": "${workspaceFolder}/venv/Scripts/python.exe",
+            "args": ["-m", "pytest", "tests/", "-v"],
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Deploy to Pi",
+            "type": "shell",
+            "command": "powershell",
+            "args": ["-File", "scripts/deploy.ps1"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

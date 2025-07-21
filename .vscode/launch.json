@@ -1,0 +1,43 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Smart Home - Main",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/main.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "Smart Home - Flask API",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/api/routes.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "FLASK_ENV": "development",
+                "FLASK_DEBUG": "1"
+            },
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "Smart Home - Tests",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["tests/", "-v"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        }
+    ]
+}
