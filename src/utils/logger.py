@@ -5,10 +5,11 @@ from typing import Optional
 from rich.console import Console
 from rich.logging import RichHandler
 
-from .config import config
+# Fix: Import from src.config instead of .config
+from src.config import config
 
 
-def setup_loggin(
+def setup_logging(
     log_level: str = None,
     log_file: str = None,
     use_rich: bool = True,
@@ -29,18 +30,20 @@ def setup_loggin(
 
     handlers = []
 
+    # File handler
     file_handler = logging.FileHandler(log_path, encoding="UTF-8")
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(level)
     handlers.append(file_handler)
 
+    # Console handler
     if use_rich and config.is_development():
         console_handler = RichHandler(
-            console = Console(stderr=True),
-            show_time = True,
-            show_path = True,
-            markup = True,
-            rich_tracebacks = True
+            console=Console(stderr=True),
+            show_time=True,
+            show_path=True,
+            markup=True,
+            rich_tracebacks=True
         )
         console_handler.setLevel(level)
     else:
@@ -52,11 +55,17 @@ def setup_loggin(
 
     logging.basicConfig(
         level=level,
-        handlers=handlers
+        handlers=handlers,
+        # Fix: Missing comma
         force=True
     )
 
-logger = setup_loggin()
+    return logging.getLogger(config.APP_NAME)
+
+
+# Fix: Call the function correctly
+logger = setup_logging()
+
 
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"{config.APP_NAME}.{name}")

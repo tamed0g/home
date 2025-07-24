@@ -1,0 +1,258 @@
+# Smart Home System Configuration
+# This file contains advanced configuration options
+
+# ===== APPLICATION SETTINGS =====
+app:
+  name: "Smart Home System"
+  version: "1.0.0"
+  debug: false
+  timezone: "Europe/Moscow"
+
+# ===== NETWORK CONFIGURATION =====
+network:
+  flask:
+    host: "0.0.0.0"
+    port: 5000
+    threaded: true
+  api:
+    version: "v1"
+    rate_limit:
+      enabled: true
+      requests_per_minute: 100
+      requests_per_hour: 1000
+
+# ===== DATABASE SETTINGS =====
+database:
+  url: "sqlite:///data/database/smart_home.db"
+  echo: false  # Set to true for SQL debug logging
+  pool_size: 5
+  max_overflow: 10
+  cleanup:
+    enabled: true
+    keep_days: 30
+    keep_states_per_device: 1000
+
+# ===== LOGGING CONFIGURATION =====
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file:
+    enabled: true
+    path: "logs/app.log"
+    max_bytes: 10485760  # 10MB
+    backup_count: 5
+  console:
+    enabled: true
+    colors: true
+
+# ===== DEVICE SETTINGS =====
+devices:
+  discovery:
+    enabled: true
+    interval_minutes: 30
+    protocols:
+      - mdns
+      - upnp
+      - yandex_api
+  health_check:
+    enabled: true
+    interval_minutes: 5
+    timeout_minutes: 10
+
+# ===== YANDEX INTEGRATION =====
+yandex:
+  api:
+    base_url: "https://api.iot.yandex.net/v1.0"
+    timeout: 30
+    retry_attempts: 3
+    retry_delay: 5
+  devices:
+    auto_discover: true
+    supported_types:
+      - "devices.types.smart_speaker"
+      - "devices.types.smart_speaker.yandex.station"
+      - "devices.types.media_device"
+
+# ===== MQTT SETTINGS =====
+mqtt:
+  enabled: false  # Enable for Home Assistant integration
+  broker:
+    host: "localhost"
+    port: 1883
+    username: ""
+    password: ""
+  topics:
+    prefix: "smarthome"
+    discovery: "homeassistant"
+  homeassistant:
+    integration: false
+    device_prefix: "Smart Home"
+
+# ===== VOICE COMMANDS =====
+voice:
+  enabled: true
+  language: "ru"
+  commands:
+    greeting:
+      patterns: ["привет", "hello", "здравствуй"]
+      response: "Привет! Как дела? Чем могу помочь?"
+    time:
+      patterns: ["время", "time", "который час"]
+      response: "Сейчас {time}"
+    lights:
+      on:
+        patterns: ["включи свет", "включить свет", "turn on light"]
+        response: "Включаю свет"
+      off:
+        patterns: ["выключи свет", "выключить свет", "turn off light"]
+        response: "Выключаю свет"
+    music:
+      play:
+        patterns: ["включи музыку", "включить музыку", "play music"]
+        response: "Включаю музыку"
+      stop:
+        patterns: ["выключи музыку", "выключить музыку", "stop music"]
+        response: "Выключаю музыку"
+
+# ===== AUTOMATION RULES =====
+automation:
+  enabled: true
+  rules:
+    # Example rule: Good morning routine
+    good_morning:
+      enabled: false
+      trigger:
+        type: "schedule"
+        cron: "0 7 * * *"  # 7:00 AM daily
+      conditions:
+        - type: "weekday"
+          days: [1, 2, 3, 4, 5]  # Monday to Friday
+      actions:
+        - type: "device_command"
+          device_id: "living_room_speaker"
+          command: "speak"
+          parameters:
+            text: "Доброе утро! Время вставать!"
+        - type: "device_command"
+          device_id: "bedroom_light"
+          command: "turn_on"
+          parameters:
+            brightness: 30
+
+    # Example rule: Evening routine
+    good_evening:
+      enabled: false
+      trigger:
+        type: "schedule"
+        cron: "0 22 * * *"  # 10:00 PM daily
+      actions:
+        - type: "device_command"
+          device_id: "all_lights"
+          command: "turn_off"
+
+# ===== RASPBERRY PI SPECIFIC =====
+raspberry_pi:
+  gpio:
+    enabled: true
+    mode: "BCM"  # or "BOARD"
+    cleanup_on_exit: true
+  hardware:
+    led_pin: 18
+    relay_pins: [23, 24, 25]
+    sensor_pins:
+      temperature: 4
+      motion: 17
+  camera:
+    enabled: false
+    resolution: [1920, 1080]
+    framerate: 30
+
+# ===== SECURITY SETTINGS =====
+security:
+  api_key:
+    required: true
+    header_name: "X-API-Key"
+  cors:
+    enabled: true
+    origins: ["*"]  # In production, specify exact origins
+  rate_limiting:
+    enabled: true
+    storage: "memory"  # or "redis" for production
+  encryption:
+    secret_key: "change-this-in-production"
+
+# ===== SYSTEM MONITORING =====
+monitoring:
+  enabled: true
+  metrics:
+    system_stats: true
+    device_health: true
+    api_requests: true
+  alerts:
+    enabled: false
+    email:
+      smtp_host: ""
+      smtp_port: 587
+      username: ""
+      password: ""
+      to: ""
+
+# ===== BACKUP SETTINGS =====
+backup:
+  enabled: false
+  schedule: "0 3 * * *"  # 3:00 AM daily
+  location: "/backup"
+  keep_days: 7
+  include:
+    - database
+    - config
+    - logs
+
+# ===== DEVELOPMENT SETTINGS =====
+development:
+  reload: false
+  debug_toolbar: false
+  mock_devices: false
+  test_mode: false
+
+# ===== FEATURE FLAGS =====
+features:
+  web_dashboard: false
+  voice_recognition: false
+  machine_learning: false
+  cloud_sync: false
+  mobile_app: false
+
+# ===== ROOMS CONFIGURATION =====
+rooms:
+  living_room:
+    name: "Гостиная"
+    devices: []
+    automation: true
+  bedroom:
+    name: "Спальня" 
+    devices: []
+    automation: true
+  kitchen:
+    name: "Кухня"
+    devices: []
+    automation: true
+  bathroom:
+    name: "Ванная"
+    devices: []
+    automation: false
+
+# ===== DEVICE GROUPS =====
+groups:
+  all_lights:
+    name: "Все светильники"
+    type: "light"
+    devices: []
+  all_speakers:
+    name: "Все колонки"
+    type: "speaker"
+    devices: []
+  security_sensors:
+    name: "Датчики безопасности"
+    type: "sensor"
+    devices: []
