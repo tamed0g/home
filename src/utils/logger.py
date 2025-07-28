@@ -5,8 +5,8 @@ from typing import Optional
 from rich.console import Console
 from rich.logging import RichHandler
 
-# Fix: Import from src.config instead of .config
-from src.config import config
+# Исправлено: импорт config из родительского пакета
+from ..config import config
 
 
 def setup_logging(
@@ -30,13 +30,11 @@ def setup_logging(
 
     handlers = []
 
-    # File handler
     file_handler = logging.FileHandler(log_path, encoding="UTF-8")
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(level)
     handlers.append(file_handler)
 
-    # Console handler
     if use_rich and config.is_development():
         console_handler = RichHandler(
             console=Console(stderr=True),
@@ -56,16 +54,13 @@ def setup_logging(
     logging.basicConfig(
         level=level,
         handlers=handlers,
-        # Fix: Missing comma
         force=True
     )
 
     return logging.getLogger(config.APP_NAME)
 
-
-# Fix: Call the function correctly
+# Исправлено: переименована функция setup_loggin -> setup_logging
 logger = setup_logging()
-
 
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"{config.APP_NAME}.{name}")

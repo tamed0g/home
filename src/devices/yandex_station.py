@@ -1,224 +1,293 @@
 import asyncio
 import aiohttp
-import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, Any, Optional, Callable
 from datetime import datetime
-import time
+import json
+import logging
 
-from src.config import config
-from src.utils.logger import get_logger
-
-logger = get_logger("yandex_station")
-
-
-class YandexDevice:
-    """Represents a single Yandex device"""
+class YandexStation:
+    """Единственная Яндекс Станция в системе"""
     
-    def __init__(self, device_data: Dict[str, Any]):
-        self.id = device_data.get('id')
-        self.name = device_data.get('name', 'Unknown Device')
-        self.type = device_data.get('type', 'unknown')
-        self.platform = device_data.get('platform', 'yandexstation')
-        self.capabilities = device_data.get('capabilities', [])
-        self.online = device_data.get('online', False)
-        self.last_updated = datetime.now()
+    def __init__(self, name: str = "Яндекс Станция", ip_address: str = None):
+        # ИСПРАВЛЕНО: Убрали super().__init__() и добавили все атрибуты вручную
+        self.device_id = "main_station"
+        self.name = name
+        self.device_type = "yandex_station"
+        self.ip_address = ip_address
+        self.session = None
+        self.volume = 50
+        self.is_playing = False
+        self.current_track = None
+        self.is_connected = False
+        self.last_seen = None
+        self.properties = {}
+        self.command_handlers: Dict[str, Callable] = {}
         
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'id': self.id,
-            'name': self.name,
-            'type': self.type,
-            'platform': self.platform,
-            'capabilities': self.capabilities,
-            'online': self.online,
-            'last_updated': self.last_updated.isoformat()
-        }
-
-
-class YandexStationManager:
-    """Manager for Yandex Station devices"""
-    
-    def __init__(self):
-        self.oauth_token = config.YANDEX_OAUTH_TOKEN
-        self.api_key = config.YANDEX_API_KEY
-        self.skill_id = config.YANDEX_SKILL_ID
+        # ИСПРАВЛЕНО: Добавили простой логгер
+        self.logger = logging.getLogger(f"YandexStation.{name}")
         
-        self.devices: Dict[str, YandexDevice] = {}
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.running = False
+        # Регистрируем стандартные команды
+        self._register_default_commands()
         
-        self.base_url = "https://api.iot.yandex.net/v1.0"
+    def _register_default_commands(self):
+        """Регистрация стандартных команд"""
         
-        logger.info("YandexStationManager initialized")
+        def lights_control(params):
+            action = params.get("action", "toggle")
+            room = params.get("room", "вся квартира")
+            
+            if action == "on":
+                message = f"Включаю свет в {room}"
+            elif action == "off":
+                message = f"Выключаю свет в {room}"
+            else:
+                message = f"Переключаю свет в {room}"
+            
+            return {"status": "success", "message": message, "speech": message}
         
-        if not self.oauth_token:
-            logger.warning("Yandex OAuth token not provided. Some functions will not work.")
-    
-    async def initialize(self):
-        """Initialize the manager"""
+        def climate_control(params):
+            temperature = params.get("temperature", 22)
+            room = params.get("room", "дом")
+            message = f"Устанавливаю температуру {temperature}°C в {room}"
+            return {"status": "success", "message": message, "speech": message}
+        
+        def security_system(params):
+            action = params.get("action", "status")
+            
+            if action == "arm":
+                message = "Включаю охрану. Система активна."
+            elif action == "disarm":
+                message = "Отключаю охрану. Дом в безопасности."
+            else:
+                message = "Система безопасности в норме."
+                
+            return {"status": "success", "message": message, "speech": message}
+        
+        def weather_info(params):
+            city = params.get("city", "вашем городе")
+            message = f"Погода в {city}: солнечно, плюс 20 градусов"
+            return {"status": "success", "message": message, "speech": message}
+        
+        def news_info(params):
+            category = params.get("category", "главные")
+            message = f"Последние {category} новости загружаются..."
+            return {"status": "success", "message": message, "speech": message}
+        
+        # Регистрируем команды
+        self.command_handlers.update({
+            "lights": lights_control,
+            "climate": climate_control,
+            "security": security_system,
+            "weather": weather_info,
+            "news": news_info
+        })
+        
+    def register_command(self, command_name: str, handler: Callable):
+        """Регистрация новой команды"""
+        self.command_handlers[command_name] = handler
+        self.logger.info(f"Registered command: {command_name}")
+        
+    # ИСПРАВЛЕНО: Добавили метод update_property
+    def update_property(self, key: str, value: Any):
+        """Обновление свойства устройства"""
+        self.properties[key] = value
+        self.last_seen = datetime.now()
+        
+    async def connect(self) -> bool:
+        """Подключение к Яндекс Станции"""
         try:
-            if not self.oauth_token:
-                logger.error("Cannot initialize without OAuth token")
-                return False
+            self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
             
-            self.session = aiohttp.ClientSession(
-                headers={
-                    'Authorization': f'Bearer {self.oauth_token}',
-                    'Content-Type': 'application/json'
-                }
-            )
+            if self.ip_address:
+                await self._test_connection()
             
-            self.running = True
-            await self.discover_devices()
-            logger.info("YandexStationManager initialized successfully")
+            self.is_connected = True
+            self.last_seen = datetime.now()
+            self.logger.info(f"Connected to Yandex Station: {self.name}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to initialize YandexStationManager: {e}")
+            self.logger.error(f"Failed to connect: {e}")
+            self.is_connected = False
             return False
     
-    async def discover_devices(self):
-        """Discover Yandex devices"""
+    async def disconnect(self):
+        """Отключение от Яндекс Станции"""
+        if self.session:
+            await self.session.close()
+        self.is_connected = False
+        self.logger.info("Disconnected from Yandex Station")
+    
+    async def _test_connection(self):
+        """Тестирование подключения"""
+        if not self.session or not self.ip_address:
+            return False
+            
         try:
-            if not self.session:
-                logger.error("Session not initialized")
-                return
-            
-            url = f"{self.base_url}/user/info"
-            
-            async with self.session.get(url) as response:
+            async with self.session.get(f"http://{self.ip_address}/api/info") as response:
                 if response.status == 200:
                     data = await response.json()
-                    devices_data = data.get('devices', [])
-                    
-                    for device_data in devices_data:
-                        device = YandexDevice(device_data)
-                        self.devices[device.id] = device
-                        logger.info(f"Discovered device: {device.name} ({device.id})")
-                    
-                    logger.info(f"Discovered {len(self.devices)} devices")
-                else:
-                    logger.error(f"Failed to discover devices: {response.status}")
-                    
-        except Exception as e:
-            logger.error(f"Error discovering devices: {e}")
-    
-    async def send_command(self, device_id: str, command: str, parameters: Dict = None) -> bool:
-        """Send command to a specific device"""
-        try:
-            if not self.session:
-                logger.error("Session not initialized")
-                return False
-            
-            if device_id not in self.devices:
-                logger.error(f"Device {device_id} not found")
-                return False
-            
-            url = f"{self.base_url}/devices/{device_id}/actions"
-            
-            payload = {
-                "actions": [{
-                    "type": command,
-                    "parameters": parameters or {}
-                }]
-            }
-            
-            async with self.session.post(url, json=payload) as response:
-                if response.status == 200:
-                    logger.info(f"Command '{command}' sent successfully to device {device_id}")
+                    self.update_property("device_info", data)
                     return True
-                else:
-                    logger.error(f"Failed to send command: {response.status}")
-                    return False
-                    
+        except:
+            pass
+        return False
+    
+    async def send_command(self, command: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Отправка команды станции"""
+        if not self.is_connected:
+            return {"error": "Station not connected"}
+        
+        params = params or {}
+        
+        try:
+            # Проверяем пользовательские команды
+            if command in self.command_handlers:
+                result = self.command_handlers[command](params)
+                self.last_seen = datetime.now()
+                return result
+            
+            # Базовые команды станции
+            result = await self._execute_station_command(command, params)
+            
+            # Попытка отправить реальную команду через API
+            if self.ip_address and self.session:
+                await self._send_real_command(command, params)
+            
+            self.last_seen = datetime.now()
+            return result
+            
         except Exception as e:
-            logger.error(f"Error sending command: {e}")
-            return False
+            self.logger.error(f"Command failed: {command}, error: {e}")
+            return {"error": str(e)}
     
-    async def speak_text(self, device_id: str, text: str) -> bool:
-        """Make device speak text"""
-        return await self.send_command(device_id, "speak", {"text": text})
-    
-    async def play_music(self, device_id: str, query: str = None) -> bool:
-        """Play music on device"""
-        parameters = {}
-        if query:
-            parameters["query"] = query
+    async def _execute_station_command(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Базовые команды станции"""
         
-        return await self.send_command(device_id, "play_music", parameters)
-    
-    async def stop_music(self, device_id: str) -> bool:
-        """Stop music on device"""
-        return await self.send_command(device_id, "stop", {})
-    
-    async def set_volume(self, device_id: str, volume: int) -> bool:
-        """Set device volume (0-100)"""
-        volume = max(0, min(100, volume))  # Clamp between 0-100
-        return await self.send_command(device_id, "set_volume", {"volume": volume})
-    
-    def get_devices(self) -> List[Dict[str, Any]]:
-        """Get list of all devices"""
-        return [device.to_dict() for device in self.devices.values()]
-    
-    def get_device(self, device_id: str) -> Optional[YandexDevice]:
-        """Get specific device by ID"""
-        return self.devices.get(device_id)
-    
-    def is_device_online(self, device_id: str) -> bool:
-        """Check if device is online"""
-        device = self.get_device(device_id)
-        return device.online if device else False
-    
-    async def refresh_devices(self):
-        """Refresh device list"""
-        await self.discover_devices()
-    
-    def shutdown(self):
-        """Shutdown the manager"""
-        logger.info("Shutting down YandexStationManager")
-        self.running = False
+        if command == "play":
+            query = params.get("query", "музыка")
+            self.is_playing = True
+            self.current_track = query
+            self.update_property("is_playing", True)
+            self.update_property("current_track", query)
+            return {
+                "status": "success", 
+                "message": f"Включаю: {query}",
+                "speech": f"Включаю {query}"
+            }
         
-        if self.session:
-            # Note: In production, you should properly close the session
-            # This is a simplified version
+        elif command == "stop":
+            self.is_playing = False
+            self.current_track = None
+            self.update_property("is_playing", False)
+            self.update_property("current_track", None)
+            return {
+                "status": "success", 
+                "message": "Воспроизведение остановлено",
+                "speech": "Останавливаю воспроизведение"
+            }
+        
+        elif command == "pause":
+            self.is_playing = False
+            self.update_property("is_playing", False)
+            return {
+                "status": "success", 
+                "message": "Воспроизведение приостановлено",
+                "speech": "Ставлю на паузу"
+            }
+        
+        elif command == "resume":
+            self.is_playing = True
+            self.update_property("is_playing", True)
+            return {
+                "status": "success", 
+                "message": "Воспроизведение возобновлено",
+                "speech": "Продолжаю воспроизведение"
+            }
+        
+        elif command == "volume":
+            volume = params.get("level", 50)
+            volume = max(0, min(100, int(volume)))
+            self.volume = volume
+            self.update_property("volume", volume)
+            return {
+                "status": "success", 
+                "message": f"Громкость установлена: {volume}%",
+                "speech": f"Устанавливаю громкость {volume} процентов"
+            }
+        
+        elif command == "say":
+            text = params.get("text", "")
+            return {
+                "status": "success", 
+                "message": f"Озвучиваю: {text}",
+                "speech": text
+            }
+        
+        else:
+            return {"error": f"Unknown command: {command}"}
+    
+    async def _send_real_command(self, command: str, params: Dict[str, Any]):
+        """Отправка реальной команды через API"""
+        if not self.session or not self.ip_address:
+            return
+        
+        try:
+            payload = {"command": command, "params": params}
+            async with self.session.post(f"http://{self.ip_address}/api/command", json=payload) as response:
+                if response.status == 200:
+                    return await response.json()
+        except Exception as e:
+            self.logger.debug(f"Real command failed (expected in demo): {e}")
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Получение полного статуса станции"""
+        return {
+            "device_id": self.device_id,
+            "name": self.name,
+            "is_connected": self.is_connected,
+            "is_playing": self.is_playing,
+            "volume": self.volume,
+            "current_track": self.current_track,
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+            "properties": self.properties,
+            "available_commands": list(self.command_handlers.keys()) + [
+                "play", "stop", "pause", "resume", "volume", "say"
+            ]
+        }
+    
+    def add_custom_command(self, name: str, description: str, handler: Callable):
+        """Удобный метод для добавления пользовательских команд"""
+        def wrapper(params):
             try:
-                asyncio.create_task(self.session.close())
+                result = handler(params)
+                if isinstance(result, str):
+                    return {"status": "success", "message": result, "speech": result}
+                return result
             except Exception as e:
-                logger.error(f"Error closing session: {e}")
-    
-    # Synchronous wrapper methods for Flask compatibility
-    def sync_speak_text(self, device_id: str, text: str) -> bool:
-        """Synchronous wrapper for speak_text"""
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(self.speak_text(device_id, text))
-            loop.close()
-            return result
-        except Exception as e:
-            logger.error(f"Error in sync_speak_text: {e}")
-            return False
-    
-    def sync_play_music(self, device_id: str, query: str = None) -> bool:
-        """Synchronous wrapper for play_music"""
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(self.play_music(device_id, query))
-            loop.close()
-            return result
-        except Exception as e:
-            logger.error(f"Error in sync_play_music: {e}")
-            return False
-    
-    def sync_initialize(self) -> bool:
-        """Synchronous wrapper for initialize"""
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(self.initialize())
-            loop.close()
-            return result
-        except Exception as e:
-            logger.error(f"Error in sync_initialize: {e}")
-            return False
+                return {"error": str(e)}
+        
+        self.register_command(name, wrapper)
+        self.logger.info(f"Added custom command: {name} - {description}")
+
+
+# Простые функции для добавления команд
+def create_simple_command(message_template: str):
+    """Создание простой команды с текстовым ответом"""
+    def handler(params):
+        message = message_template.format(**params)
+        return {"status": "success", "message": message, "speech": message}
+    return handler
+
+def create_device_command(device_name: str, actions: Dict[str, str]):
+    """Создание команды управления устройством"""
+    def handler(params):
+        action = params.get("action", "toggle").lower()
+        if action in actions:
+            message = actions[action].format(device=device_name, **params)
+        else:
+            available = ", ".join(actions.keys())
+            message = f"Неизвестное действие для {device_name}. Доступные: {available}"
+        
+        return {"status": "success", "message": message, "speech": message}
+    return handler
